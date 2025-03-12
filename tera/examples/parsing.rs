@@ -1,5 +1,10 @@
 fn main() {
-    let parser = tera::parsing::parser::Parser::new("{{ 1 + 1 }}");
-    let ast = parser.parse().expect("should parse correctly");
-    println!("{:?}", ast.nodes)
+    let source = r#"
+{# foo #}
+{% extends "base.html" %}
+{# bar #}
+"#;
+    for token in tokenize(source) {
+        println!("{:?}", token);
+    }
 }
