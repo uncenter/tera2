@@ -73,7 +73,7 @@ pub enum Token<'a> {
     TagStart(bool),
     TagEnd(bool),
     // (start, end) of ws - never exposed to the parser
-    Comment(bool, bool),
+    Comment(bool, String, bool),
     Ident(&'a str),
 
     // a string that has been unescaped
@@ -130,7 +130,9 @@ impl<'a> fmt::Debug for Token<'a> {
             Token::VariableEnd(ws) => write!(f, "VARIABLE_END({ws})"),
             Token::TagStart(ws) => write!(f, "TAG_START({ws})"),
             Token::TagEnd(ws) => write!(f, "TAG_END({ws})"),
-            Token::Comment(start, end) => write!(f, "COMMENT({start}, {end})"),
+            Token::Comment(start, content, end) => {
+                write!(f, "COMMENT({start}, {content:?}, {end})")
+            }
             Token::Ident(i) => write!(f, "IDENT({i})"),
             Token::Str(s) => write!(f, "STRING({s:?})"),
             Token::String(s) => write!(f, "STRING({s:?})"),
@@ -178,7 +180,7 @@ impl<'a> fmt::Display for Token<'a> {
             Token::VariableEnd(_) => write!(f, "`}}}}`"),
             Token::TagStart(_) => write!(f, "`{{%`"),
             Token::TagEnd(_) => write!(f, "`%}}`"),
-            Token::Comment(_, _) => write!(f, "comment`"),
+            Token::Comment(_, _, _) => write!(f, "comment`"),
             Token::Ident(_) => write!(f, "identifier"),
             Token::String(_) | Token::Str(_) => write!(f, "string"),
             Token::Integer(_) => write!(f, "integer"),
@@ -439,6 +441,8 @@ fn basic_tokenize(input: &str) -> impl Iterator<Item = Result<(Token<'_>, Span),
                     Some("{#") => {
                         let ws_start = check_ws_start!();
                         if let Some(comment_end) = memstr(rest.as_bytes(), b"#}") {
+                            let comment_content = &rest[0..comment_end];
+
                             let ws_end = if comment_end > 0 {
                                 rest.as_bytes().get(comment_end - 1) == Some(&b'-')
                             } else {
@@ -446,7 +450,7 @@ fn basic_tokenize(input: &str) -> impl Iterator<Item = Result<(Token<'_>, Span),
                             };
                             advance!(comment_end + 2);
                             return Some(Ok((
-                                Token::Comment(ws_start, ws_end),
+                                Token::Comment(ws_start, comment_content.to_string(), ws_end),
                                 make_span!(start_loc),
                             )));
                         } else {
@@ -621,7 +625,7 @@ fn whitespace_filter<'a, I: Iterator<Item = Result<(Token<'a>, Span), Error>>>(
                 iter.peek(),
                 Some(Ok((Token::VariableStart(true), _)))
                     | Some(Ok((Token::TagStart(true), _)))
-                    | Some(Ok((Token::Comment(true, _), _)))
+                    | Some(Ok((Token::Comment(true, _, _), _)))
                     | Some(Ok((Token::RawContent(true, _, _), _)))
             ) {
                 $data = $data.trim_end();
@@ -641,13 +645,6 @@ fn whitespace_filter<'a, I: Iterator<Item = Result<(Token<'a>, Span), Error>>>(
         rv @ Some(Ok((Token::VariableEnd(true), _))) | rv @ Some(Ok((Token::TagEnd(true), _))) => {
             remove_leading_ws = true;
             rv
-        }
-        Some(Ok((Token::Comment(_, end_ws), span))) => {
-            if end_ws {
-                remove_leading_ws = true;
-            }
-            // Empty content nodes will get removed by the parser
-            Some(Ok((Token::Content(""), span)))
         }
         other => {
             remove_leading_ws = false;
