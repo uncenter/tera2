@@ -306,7 +306,7 @@ pub struct BinaryOperation {
 
 impl fmt::Display for BinaryOperation {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "({} {} {})", self.op, self.left, self.right)
+        write!(f, "{} {} {}", self.left, self.op, self.right)
     }
 }
 
@@ -577,6 +577,18 @@ pub struct Set {
     pub global: bool,
 }
 
+impl fmt::Display for Set {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "{{% {} {} = {} %}}",
+            if self.global { "set_global" } else { "set" },
+            self.name,
+            self.value
+        )
+    }
+}
+
 /// Set a variable in the context from a block `{% set val %}Hello {{world}}{% endset %}`
 #[derive(Clone, Debug, PartialEq)]
 pub struct BlockSet {
@@ -591,10 +603,36 @@ pub struct BlockSet {
     pub global: bool,
 }
 
+impl fmt::Display for BlockSet {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "{{% {} {}",
+            if self.global { "set_global" } else { "set" },
+            self.name
+        )?;
+        for filter in &self.filters {
+            write!(f, " | ");
+            fmt::Display::fmt(filter, f)?;
+        }
+        write!(f, " %}}");
+        for node in &self.body {
+            fmt::Display::fmt(node, f)?;
+        }
+        write!(f, "{{% endset %}}")
+    }
+}
+
 /// A template to include
 #[derive(Clone, Debug, PartialEq)]
 pub struct Include {
     pub name: String,
+}
+
+impl fmt::Display for Include {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{{% include \"{}\" %}}", self.name)
+    }
 }
 
 /// A block definition
@@ -604,6 +642,16 @@ pub struct Block {
     pub name: String,
     /// The block content
     pub body: Vec<Node>,
+}
+
+impl fmt::Display for Block {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{{% block {} %}}", self.name)?;
+        for node in &self.body {
+            fmt::Display::fmt(node, f)?;
+        }
+        write!(f, "{{% endblock {} %}}", self.name)
+    }
 }
 
 /// An if/elif/else condition with their respective body
@@ -617,6 +665,22 @@ pub struct If {
     pub false_body: Vec<Node>,
 }
 
+impl fmt::Display for If {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{{% if {} %}}", self.expr)?;
+        for node in &self.body {
+            fmt::Display::fmt(node, f)?;
+        }
+        if self.false_body.len() > 0 {
+            write!(f, "{{% else %}}")?;
+            for node in &self.false_body {
+                fmt::Display::fmt(node, f)?;
+            }
+        }
+        write!(f, "{{% endif %}}")
+    }
+}
+
 /// A filter section node `{{ filter name(param="value") }} content {{ endfilter }}`
 #[derive(Clone, Debug, PartialEq)]
 pub struct FilterSection {
@@ -624,6 +688,21 @@ pub struct FilterSection {
     pub kwargs: HashMap<String, Expression>,
     /// The filter body
     pub body: Vec<Node>,
+}
+
+impl fmt::Display for FilterSection {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{{{{ filter {}(", self.name.node())?;
+        for (key, value) in &self.kwargs {
+            write!(f, "{}=", key)?;
+            fmt::Display::fmt(value, f)?;
+        }
+        write!(f, ") }}}}");
+        for node in &self.body {
+            fmt::Display::fmt(node, f)?;
+        }
+        write!(f, "{{{{ endfilter }}}}")
+    }
 }
 
 /// A Macro definition `{% macro hello() %}...{% endmacro %}`
@@ -650,6 +729,32 @@ pub struct ForLoop {
     pub body: Vec<Node>,
     /// The body to execute in case of an empty object in the `{% for .. %}{% else %}{% endfor %}` construct
     pub else_body: Vec<Node>,
+}
+
+impl fmt::Display for ForLoop {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "{{% for {}{} in {} %}}",
+            if let Some(key) = &self.key {
+                format!("{},", key)
+            } else {
+                "".to_owned()
+            },
+            self.value,
+            self.target
+        )?;
+        for node in &self.body {
+            fmt::Display::fmt(node, f)?;
+        }
+        if self.else_body.len() > 0 {
+            write!(f, "{{% else %}}")?;
+            for node in &self.else_body {
+                fmt::Display::fmt(node, f)?;
+            }
+        }
+        write!(f, "{{% endfor %}}")
+    }
 }
 
 #[derive(Clone, PartialEq)]
@@ -683,6 +788,26 @@ impl fmt::Debug for Node {
             FilterSection(s) => fmt::Debug::fmt(s, f),
             Break => fmt::Debug::fmt("{% break %}", f),
             Continue => fmt::Debug::fmt("{% continue %}", f),
+        }
+    }
+}
+
+impl fmt::Display for Node {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        use Node::*;
+
+        match self {
+            Content(s) => fmt::Display::fmt(s, f),
+            Expression(s) => fmt::Display::fmt(s, f),
+            Set(s) => fmt::Display::fmt(s, f),
+            BlockSet(s) => fmt::Display::fmt(s, f),
+            Include(s) => fmt::Display::fmt(s, f),
+            Block(s) => fmt::Display::fmt(s, f),
+            ForLoop(s) => fmt::Display::fmt(s, f),
+            If(s) => fmt::Display::fmt(s, f),
+            FilterSection(s) => fmt::Display::fmt(s, f),
+            Break => fmt::Display::fmt("{% break %}", f),
+            Continue => fmt::Display::fmt("{% continue %}", f),
         }
     }
 }
