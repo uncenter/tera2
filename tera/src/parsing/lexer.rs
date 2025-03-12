@@ -217,7 +217,7 @@ impl<'a> fmt::Display for Token<'a> {
     }
 }
 
-fn basic_tokenize(input: &str) -> impl Iterator<Item = Result<(Token<'_>, Span), Error>> {
+pub fn basic_tokenize(input: &str) -> impl Iterator<Item = Result<(Token<'_>, Span), Error>> {
     let mut rest = input;
     let mut stack = vec![State::Template];
     let mut current_line = 1;
